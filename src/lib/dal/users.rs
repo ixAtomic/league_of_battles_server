@@ -31,6 +31,18 @@ pub async fn get_user(user_id: &str) -> Result<HashMap<String, AttributeValue>, 
     Ok(result)
 }
 
+pub async fn get_user_statistics(puuid: &str) -> Result<HashMap<String, AttributeValue>, Error> {
+    let client = connect().await?;
+    let result = client
+        .get_item()
+        .table_name("Statistics")
+        .key("puuid", AttributeValue::S(puuid.to_owned()))
+        .send()
+        .await?;
+    let result = result.item.unwrap();
+    Ok(result)
+}
+
 pub async fn get_matches(
     puuid: &str,
     start: &str,

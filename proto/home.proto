@@ -14,9 +14,18 @@ message HomePageResponse {
     string last_name = 6;
     string riot_puuid = 7;
     repeated string matches = 8;
+    StatisticsAggregateResponse stats = 9;
 }
 
 message HomePageRequest {
     string id = 1;
+}
+
+message StatisticsAggregateResponse {
+    int64 total_damage = 1;
+    int64 total_earnings = 2;
+    int64 total_kills = 3;
+    int64 total_wins = 4;
+    int64 total_losses = 5;
 }
 
