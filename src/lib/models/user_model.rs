@@ -12,13 +12,14 @@ pub struct UserResponseModel {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct StatisticsModel {
-    pub damage: Vec<i64>,
-    pub date: Vec<String>,
-    pub earnings: Vec<i64>,
-    pub kills: Vec<i64>,
-    pub match_id: Vec<String>,
-    pub match_result: Vec<bool>,
+pub struct Stats {
+    pub id: String,
+    pub match_date: String,
+    pub damage: i64,
+    pub earnings: i64,
+    pub kills: i64,
+    pub match_id: String,
+    pub match_result: bool,
 }
 
 pub struct StatisticsWithAggregateModel {

@@ -1,5 +1,6 @@
 use crate::config;
 use aws_sdk_dynamodb::{model::AttributeValue, Client, Error};
+use chrono::prelude::*;
 use dotenv::dotenv;
 use reqwest::{self};
 use std::collections::HashMap;
@@ -31,16 +32,35 @@ pub async fn get_user(user_id: &str) -> Result<HashMap<String, AttributeValue>, 
     Ok(result)
 }
 
-pub async fn get_user_statistics(puuid: &str) -> Result<HashMap<String, AttributeValue>, Error> {
+pub async fn get_user_statistics(
+    puuid: &str,
+    begin_date: Option<&str>,
+    end_date: Option<&str>,
+) -> Result<Vec<HashMap<String, AttributeValue>>, Error> {
+    let begin_date = if let Some(date) = begin_date {
+        String::from(date)
+    } else {
+        "00000000000000".to_string() //getting all rows as far back as possible. this is in the date format YYYYMMddHHmmss
+    };
+    let end_date = if let Some(date) = end_date {
+        String::from(date)
+    } else {
+        Utc::now().naive_local().format("%Y%m%d%H%M%S").to_string()
+    };
     let client = connect().await?;
     let result = client
-        .get_item()
-        .table_name("Statistics")
-        .key("puuid", AttributeValue::S(puuid.to_owned()))
+        .query()
+        .table_name("Stats")
+        .key_condition_expression(
+            "id = :partitionKey and match_date between :beginDate and :endDate",
+        )
+        .expression_attribute_values(":partitionKey", AttributeValue::S(puuid.to_string()))
+        .expression_attribute_values(":beginDate", AttributeValue::S(begin_date))
+        .expression_attribute_values(":endDate", AttributeValue::S(end_date))
         .send()
         .await?;
-    let result = result.item.unwrap();
-    Ok(result)
+
+    Ok(result.items.unwrap())
 }
 
 pub async fn get_matches(

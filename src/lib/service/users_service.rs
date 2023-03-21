@@ -1,9 +1,7 @@
-use std::borrow::Borrow;
-
 use crate::dal::users;
 use crate::home::home::{HomePageResponse, StatisticsAggregateResponse};
-use crate::models::user_model::{StatisticsModel, UserResponseModel};
-use chrono::{prelude::*, Duration};
+use crate::models::user_model::{Stats, UserResponseModel};
+use serde_dynamo::aws_sdk_dynamodb_0_24::from_items;
 use serde_dynamo::{self, from_item};
 
 pub async fn get_user_data(user_id: &str) -> Result<HomePageResponse, Box<dyn std::error::Error>> {
@@ -12,7 +10,7 @@ pub async fn get_user_data(user_id: &str) -> Result<HomePageResponse, Box<dyn st
         .await
         .unwrap();
     let user_stats = construct_statistics_model(&user.riot_puuid).await;
-    let aggregate_stats = aggregate_stats(&user_stats, None, None);
+    let aggregate_stats = aggregate_stats(&user_stats);
 
     let reply = HomePageResponse {
         user_name: user.user_name,
@@ -29,81 +27,33 @@ pub async fn get_user_data(user_id: &str) -> Result<HomePageResponse, Box<dyn st
     Ok(reply)
 }
 
-fn subtract_days(date: NaiveDate, days: i64) -> NaiveDate {
-    let duration = Duration::days(days);
-    date - duration
+fn aggregate_stats(stats: &Vec<Stats>) -> StatisticsAggregateResponse {
+    let init = StatisticsAggregateResponse {
+        total_damage: 0,
+        total_earnings: 0,
+        total_kills: 0,
+        total_wins: 0,
+        total_losses: 0,
+    };
+
+    let f = |acc: StatisticsAggregateResponse, stat: &Stats| StatisticsAggregateResponse {
+        total_damage: acc.total_damage + stat.damage,
+        total_earnings: acc.total_earnings + stat.earnings,
+        total_kills: acc.total_kills + stat.kills,
+        total_wins: acc.total_wins + if stat.match_result { 1 } else { 0 },
+        total_losses: acc.total_losses + if stat.match_result { 0 } else { 1 },
+    };
+
+    stats.iter().fold(init, f)
 }
 
-fn get_first_index<I>(dates: I, today: NaiveDate, index: Option<usize>) -> usize
-where
-    I: IntoIterator,
-    I::Item: Borrow<String>,
-{
-    if let Some(start_index) = index {
-        let start_date = subtract_days(
-            today,
-            start_index
-                .try_into()
-                .expect("start_index should be able to parse to i64"),
-        );
-        dates
-            .into_iter()
-            .position(|rec| date_equals(rec.borrow(), start_date))
-            .expect("result of start should be a usize value")
-    } else {
-        0
-    }
-}
-
-fn date_equals(record_date: &str, start_date: NaiveDate) -> bool {
-    if let Ok(date) = NaiveDate::parse_from_str(record_date, "%Y-%m-%d") {
-        date == start_date
-    } else {
-        false
-    }
-}
-
-fn aggregate_stats(
-    stats: &StatisticsModel,
-    start: Option<usize>,
-    end: Option<usize>,
-) -> StatisticsAggregateResponse {
-    //TODO - Add something so that if a statistic is null and newly added it fills the statistic with empty values equal to the number of values currently in the table
-    let today = Local::now().date_naive();
-    let start_index = get_first_index(&stats.date, today, start);
-    let end_index = stats.date.len() - get_first_index(stats.date.iter().rev(), today, end); //this will get the last index of the array based on the filter
-    let (wins, losses) = stats.match_result[start_index..end_index].iter().fold(
-        (0, 0),
-        |(mut wins, mut losses), &result| {
-            if result {
-                wins += 1;
-            } else {
-                losses += 1;
-            }
-            (wins, losses)
-        },
-    );
-    StatisticsAggregateResponse {
-        total_damage: (stats.damage[start_index..end_index]) //start and ending indexes of the array which correspond to beginning and end points
-            .iter()
-            .fold(0, |tot, dmg| tot + dmg),
-        total_earnings: stats.earnings[start_index..end_index]
-            .iter()
-            .fold(0, |tot, earn| tot + earn),
-        total_kills: stats.kills[start_index..end_index]
-            .iter()
-            .fold(0, |tot, kills| tot + kills),
-        total_wins: wins,
-        total_losses: losses,
-    }
-}
-
-async fn construct_statistics_model(puuid: &str) -> StatisticsModel {
-    let result = users::get_user_statistics(puuid).await.unwrap_or_default();
-    let result: StatisticsModel =
-        from_item(result).expect("the result should parse to the Statistics Model");
-    println!("Statistics Results: {:?}", result);
-    return result;
+async fn construct_statistics_model(puuid: &str) -> Vec<Stats> {
+    let result = users::get_user_statistics(puuid, None, None)
+        .await
+        .unwrap_or_default();
+    println!("result {:?}", result);
+    let results: Vec<Stats> = from_items(result).expect("results should parse to Stats model");
+    results
 }
 
 pub async fn get_user(username: &str) -> UserResponseModel {
